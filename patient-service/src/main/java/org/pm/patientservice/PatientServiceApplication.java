@@ -22,7 +22,7 @@ public class PatientServiceApplication {
 		patient.setEmail("hihi@gmail.com");
 		patient.setAddress("Hanoi");
 		patient.setDateOfBirth(java.time.LocalDate.of(1990, 1, 1));
-		patient.setRegistrationDate(java.time.LocalDate.now());
+		patient.setRegisteredDate(java.time.LocalDate.now());
 
 
 		return args -> {
