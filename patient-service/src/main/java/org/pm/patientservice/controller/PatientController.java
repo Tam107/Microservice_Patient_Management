@@ -1,6 +1,7 @@
-package org.pm.patientservice.dto;
+package org.pm.patientservice.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.pm.patientservice.dto.PatientResponseDTO;
 import org.pm.patientservice.service.PatientService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
