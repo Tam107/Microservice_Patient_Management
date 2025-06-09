@@ -1,0 +1,13 @@
+### PUT Request to Update Patient Information
+PUT http://localhost:4000/patients/123e4567-e89b-12d3-a456-426614174000
+Content-Type: application/json
+
+{
+  "name": "Thanh Tam",
+  "email": "test.he@example.com",
+  "address": "123 Main St, Springfield new york, USA",
+    "dateOfBirth": "1990-01-01",
+    "registeredDate": "2023-10-01"
+}
+
+###

@@ -20,4 +20,6 @@ spring:
       mode: always # Always run the SQL scripts on startup
 server:
   port: 4000
-
+logging:
+  level:
+    root: info
