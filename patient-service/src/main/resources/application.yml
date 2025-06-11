@@ -4,20 +4,20 @@
 spring:
   application:
     name: patient-service
-  h2:
-    console:
-      path: /h2-console
-  datasource:
-    url: jdbc:h2:mem:testdb
-    driver-class-name: org.h2.Driver
-    username: admin_viewer
-    password: 123456
-  jpa:
-    hibernate:
-      ddl-auto: update
-  sql:
-    init:
-      mode: always # Always run the SQL scripts on startup
+#  h2:
+#    console:
+#      path: /h2-console
+#  datasource:
+#    url: jdbc:h2:mem:testdb
+#    driver-class-name: org.h2.Driver
+#    username: admin_viewer
+#    password: 123456
+#  jpa:
+#    hibernate:
+#      ddl-auto: update
+#  sql:
+#    init:
+#      mode: always # Always run the SQL scripts on startup
 server:
   port: 4000
 logging:
