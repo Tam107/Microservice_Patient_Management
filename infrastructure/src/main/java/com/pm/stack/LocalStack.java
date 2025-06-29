@@ -1,13 +1,20 @@
 package com.pm.stack;
 
-import com.amazonaws.services.ecs.model.Cluster;
+
 import software.amazon.awscdk.*;
 import software.amazon.awscdk.services.ec2.*;
 import software.amazon.awscdk.services.ec2.InstanceType;
+import software.amazon.awscdk.services.ecs.*;
+import software.amazon.awscdk.services.ecs.Protocol;
+import software.amazon.awscdk.services.logs.LogGroup;
+import software.amazon.awscdk.services.logs.RetentionDays;
 import software.amazon.awscdk.services.msk.CfnCluster;
 import software.amazon.awscdk.services.rds.*;
 import software.amazon.awscdk.services.route53.CfnHealthCheck;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class LocalStack extends Stack {
@@ -22,6 +29,8 @@ public class LocalStack extends Stack {
     private final Vpc vpc;
 
     private final Cluster ecsCluster;
+
+    private final String jwtScret = "VGhpcy1pcy1hLXNlY3VyZS1rZXktZm9yLXRlc3RpbmctSldULXByb2R1Y3Rpb24=";
 
     /**
      * Constructor for LocalStack.
@@ -42,6 +51,134 @@ public class LocalStack extends Stack {
         CfnHealthCheck patientDbHealthCheck = createDbHealthCheck(patientServiceDb, "PatientServiceDbHealthCheck");
 
         CfnCluster mskCluster = createMskCluster();
+
+        this.ecsCluster = createEcsCluster();
+
+        FargateService authService = createFargateService(
+                "AuthService",
+                "auth-service",
+                List.of(4005),
+                authServiceDb,
+                Map.of("JWT_SECRET", jwtScret)
+        );
+
+        authService.getNode().addDependency(authDbHealthCheck);
+        authService.getNode().addDependency(authServiceDb);
+
+        FargateService billingService = createFargateService(
+                "BillingService",
+                "billing-service",
+                List.of(4001, 9001), // 4001 for REST API, 9001 for gRPC
+                null,
+                null
+        );
+
+        FargateService analyticsService = createFargateService(
+                "AnalyticsService",
+                "analytics-service",
+                List.of(4002, 9002), // 4002 for REST API, 9002 for gRPC
+                null,
+                null
+        );
+
+        analyticsService.getNode().addDependency(mskCluster);
+
+        FargateService patientService = createFargateService(
+                "PatientService",
+                "patient-service",
+                List.of(4000), // 4003 for REST API, 9003 for gRPC
+                patientServiceDb,
+                Map.of("BILLING_SERVICE_ADDRESS", "host.docker.internal",
+                        "BILLING_SERVICE_GRPC_PORT", "9001")
+        );
+        patientService.getNode().addDependency(patientServiceDb);
+        patientService.getNode().addDependency(patientDbHealthCheck);
+        patientService.getNode().addDependency(billingService);
+        patientService.getNode().addDependency(mskCluster);
+    }
+
+
+    // auth-service.patient-management.local
+    private Cluster createEcsCluster() {
+        return Cluster.Builder.create(this, "PatientManagementCluster")
+                .vpc(vpc)
+                .defaultCloudMapNamespace(CloudMapNamespaceOptions.builder() // set up a Cloud Map namespace for service discovery
+                        .name("patient-management.local")
+                        .build()).build();
+    }
+
+    /**
+     * Creates and configures an AWS Fargate service with the specified parameters.
+     *
+     * This method sets up a Fargate task definition and service, including container definitions,
+     * port mappings, logging configurations, and environment variables. It optionally integrates
+     * with a database instance for data persistence and supports additional environment variable customization.
+     *
+     * @param id               the unique identifier for the Fargate service
+     * @param imageName        the name of the container image to be used in the service
+     * @param ports            a list of container ports to be exposed
+     * @param db               the database instance to connect to (optional, can be null)
+     * @param additionalEnvVars additional custom environment variables to be added to the container (optional, can be null)
+     * @return the configured FargateService object representing the deployed service
+     */
+    private FargateService createFargateService(String id, String imageName, List<Integer> ports, DatabaseInstance db,
+                                                Map<String, String> additionalEnvVars){
+        FargateTaskDefinition taskDefinition = FargateTaskDefinition.Builder
+                .create(this, id+ "Task")
+                .cpu(256) // CPU units for the task
+                .memoryLimitMiB(512) // Memory limit in MiB
+                .build();
+
+        ContainerDefinitionOptions.Builder containerOptions =
+                ContainerDefinitionOptions.builder()
+                        .image(ContainerImage.fromRegistry(imageName))
+                        .portMappings(ports.stream()
+                                .map(port -> PortMapping.builder()
+                                        .containerPort(port)
+                                        .hostPort(port)
+                                        .protocol(Protocol.TCP)
+                                        .build())
+                                .toList())
+                        .logging(LogDriver.awsLogs(AwsLogDriverProps.builder()
+                                .logGroup(LogGroup.Builder.create(this, id + "LogGroup")
+                                        .logGroupName("/ecs/" + imageName)
+                                        .removalPolicy(RemovalPolicy.DESTROY)
+                                        .retention(RetentionDays.ONE_DAY)
+                                        .build())
+                                .streamPrefix(imageName) // Prefix for the log stream
+                                .build()));
+
+        Map<String, String> envVars =new HashMap<>();
+        envVars.put("SPRING_KAFKA_BOOTSTRAP_SERVERS", "localhost.localstack.cloud:4510" +
+                ", localhost.localstack.cloud:4511" +
+                ",localhost.localstack.cloud:4512"); // replace with actual Kafka bootstrap servers
+
+        if (additionalEnvVars != null) {
+            envVars.putAll(additionalEnvVars);
+        }
+
+        if (db != null){
+            envVars.put("STRING_DATASOURCE_URL", "jdbc:postgresql://%s:%s/%s-db".formatted(
+                    db.getDbInstanceEndpointAddress(),
+                    db.getDbInstanceEndpointPort(),
+                    imageName
+            ));
+
+            envVars.put("STRING_DATASOURCE_USERNAME", "admin_user");
+            envVars.put("STRING_DATASOURCE_PASSWORD", db.getSecret().secretValueFromJson("password").toString());
+            envVars.put("SPRING_JPA_HIBERNATE_DDL_AUTO", "update");
+            envVars.put("SPRING_SQL_INIT_MODE", "always");
+            envVars.put("SPRING_DATASOURCE_HIKARI_INITIALIZATION_FAIL_TIMEOUT", "60000");
+        }
+
+        containerOptions.environment(envVars);
+        taskDefinition.addContainer(imageName+"Container", containerOptions.build());
+        return FargateService.Builder.create(this, id)
+                .cluster(ecsCluster)
+                .taskDefinition(taskDefinition)
+                .assignPublicIp(false)
+                .serviceName(imageName)
+                .build();
     }
 
     private Vpc createVpc() {
