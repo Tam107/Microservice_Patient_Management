@@ -2,10 +2,12 @@ package com.pm.stack;
 
 
 import software.amazon.awscdk.*;
+import software.amazon.awscdk.services.ecs.ContainerDefinitionOptions;
 import software.amazon.awscdk.services.ec2.*;
 import software.amazon.awscdk.services.ec2.InstanceType;
 import software.amazon.awscdk.services.ecs.*;
 import software.amazon.awscdk.services.ecs.Protocol;
+import software.amazon.awscdk.services.ecs.patterns.ApplicationLoadBalancedFargateService;
 import software.amazon.awscdk.services.logs.LogGroup;
 import software.amazon.awscdk.services.logs.RetentionDays;
 import software.amazon.awscdk.services.msk.CfnCluster;
@@ -95,6 +97,8 @@ public class LocalStack extends Stack {
         patientService.getNode().addDependency(patientDbHealthCheck);
         patientService.getNode().addDependency(billingService);
         patientService.getNode().addDependency(mskCluster);
+
+        createApiGatewayService();
     }
 
 
@@ -248,9 +252,45 @@ public class LocalStack extends Stack {
                 .build();
     }
 
-//    private createApiGatewayService(){
-//
-//    }
+    private void createApiGatewayService(){
+        FargateTaskDefinition taskDefinition = FargateTaskDefinition.Builder
+                .create(this, "APIGatewayTaskDefinition")
+                .cpu(256) // CPU units for the task
+                .memoryLimitMiB(512) // Memory limit in MiB
+                .build();
+
+        ContainerDefinitionOptions.Builder containerOptions =
+                ContainerDefinitionOptions.builder()
+                        .image(ContainerImage.fromRegistry("api-gateway"))
+                        .environment(Map.of("SPRING_PROFILES_ACTIVE", "prod",
+                                "AUTH_SERVICE_URL", "http://host.docker.internal:4005"))
+                        .portMappings(List.of(4004).stream()
+                                .map(port -> PortMapping.builder()
+                                        .containerPort(port)
+                                        .hostPort(port)
+                                        .protocol(Protocol.TCP)
+                                        .build())
+                                .toList())
+                        .logging(LogDriver.awsLogs(AwsLogDriverProps.builder()
+                                .logGroup(LogGroup.Builder.create(this, "ApiGatewayLogGroup")
+                                        .logGroupName("/ecs/api-gateway")
+                                        .removalPolicy(RemovalPolicy.DESTROY)
+                                        .retention(RetentionDays.ONE_DAY)
+                                        .build())
+                                .streamPrefix("api-gateway") // Prefix for the log stream
+                                .build()));
+
+        taskDefinition.addContainer("APIGatewayContainer", containerOptions.build());
+
+        ApplicationLoadBalancedFargateService apiGateway =
+                ApplicationLoadBalancedFargateService.Builder.create(this, "ApiGatewayService")
+                        .cluster(ecsCluster)
+                        .serviceName("api-gateway")
+                        .taskDefinition(taskDefinition)
+                        .desiredCount(1) // find number of instances to run of the task
+                        .healthCheckGracePeriod(Duration.seconds(60)) // grace period for health check
+                        .build();
+    }
     
     /**
      * The main entry point for the application.
