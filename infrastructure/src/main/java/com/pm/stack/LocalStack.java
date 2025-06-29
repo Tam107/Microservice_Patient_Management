@@ -1,12 +1,14 @@
 package com.pm.stack;
 
+import com.amazonaws.services.ecs.model.Cluster;
 import software.amazon.awscdk.*;
-import software.amazon.awscdk.services.ec2.InstanceClass;
-import software.amazon.awscdk.services.ec2.InstanceSize;
+import software.amazon.awscdk.services.ec2.*;
 import software.amazon.awscdk.services.ec2.InstanceType;
-import software.amazon.awscdk.services.ec2.Vpc;
+import software.amazon.awscdk.services.msk.CfnCluster;
 import software.amazon.awscdk.services.rds.*;
 import software.amazon.awscdk.services.route53.CfnHealthCheck;
+
+import java.util.stream.Collectors;
 
 public class LocalStack extends Stack {
 
@@ -18,6 +20,8 @@ public class LocalStack extends Stack {
      * for resources like database instances and other services contained in the stack.
      */
     private final Vpc vpc;
+
+    private final Cluster ecsCluster;
 
     /**
      * Constructor for LocalStack.
@@ -36,6 +40,8 @@ public class LocalStack extends Stack {
         CfnHealthCheck authDbHealthCheck = createDbHealthCheck(authServiceDb, "AuthServiceDbHealthCheck");
 
         CfnHealthCheck patientDbHealthCheck = createDbHealthCheck(patientServiceDb, "PatientServiceDbHealthCheck");
+
+        CfnCluster mskCluster = createMskCluster();
     }
 
     private Vpc createVpc() {
@@ -79,6 +85,29 @@ public class LocalStack extends Stack {
                         .requestInterval(30) // seconds
                         .failureThreshold(3) // number of failed checks before marking as unhealthy
                         .build())
+                .build();
+    }
+
+    /**
+     * Creates and configures an Amazon MSK (Managed Streaming for Apache Kafka) cluster within the stack.
+     *
+     * This method constructs an MSK cluster with the specified cluster name, Kafka version,
+     * number of broker nodes, and broker node group configuration. The broker node group
+     * includes details such as instance type, client subnets, and availability zone distribution.
+     *
+     * @return a configured {@code CfnCluster} object representing the created MSK cluster
+     */
+    private CfnCluster createMskCluster(){
+        return CfnCluster.Builder.create(this, "MskCluster")
+                .clusterName("kafka-cluster")
+                .kafkaVersion("2.8.0")
+                .numberOfBrokerNodes(1)
+                .brokerNodeGroupInfo(CfnCluster.BrokerNodeGroupInfoProperty.builder()
+                        .instanceType("kafka.m5.xlarge")
+                        .clientSubnets(vpc.getPrivateSubnets().stream().map(
+                                ISubnet::getSubnetId)
+                                .collect(Collectors.toList()))
+                        .brokerAzDistribution("DEFAULT").build())
                 .build();
     }
     
