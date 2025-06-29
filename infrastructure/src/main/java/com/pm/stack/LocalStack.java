@@ -247,6 +247,10 @@ public class LocalStack extends Stack {
                         .brokerAzDistribution("DEFAULT").build())
                 .build();
     }
+
+//    private createApiGatewayService(){
+//
+//    }
     
     /**
      * The main entry point for the application.
