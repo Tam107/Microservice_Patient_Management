@@ -24,7 +24,7 @@ public class LocalStack extends Stack {
     /**
      * Represents the Virtual Private Cloud (VPC) resource used within the stack.
      * The VPC is created with default settings during stack initialization.
-     *
+     * <p>
      * This VPC is primarily utilized to provide network isolation and infrastructure
      * for resources like database instances and other services contained in the stack.
      */
@@ -61,7 +61,7 @@ public class LocalStack extends Stack {
                 "auth-service",
                 List.of(4005),
                 authServiceDb,
-                Map.of("JWT_SECRET", jwtScret)
+                Map.of("JWT_SECRET", "VGhpcy1pcy1hLXNlY3VyZS1rZXktZm9yLXRlc3RpbmctSldULXByb2R1Y3Rpb24=")
         );
 
         authService.getNode().addDependency(authDbHealthCheck);
@@ -113,22 +113,22 @@ public class LocalStack extends Stack {
 
     /**
      * Creates and configures an AWS Fargate service with the specified parameters.
-     *
+     * <p>
      * This method sets up a Fargate task definition and service, including container definitions,
      * port mappings, logging configurations, and environment variables. It optionally integrates
      * with a database instance for data persistence and supports additional environment variable customization.
      *
-     * @param id               the unique identifier for the Fargate service
-     * @param imageName        the name of the container image to be used in the service
-     * @param ports            a list of container ports to be exposed
-     * @param db               the database instance to connect to (optional, can be null)
+     * @param id                the unique identifier for the Fargate service
+     * @param imageName         the name of the container image to be used in the service
+     * @param ports             a list of container ports to be exposed
+     * @param db                the database instance to connect to (optional, can be null)
      * @param additionalEnvVars additional custom environment variables to be added to the container (optional, can be null)
      * @return the configured FargateService object representing the deployed service
      */
     private FargateService createFargateService(String id, String imageName, List<Integer> ports, DatabaseInstance db,
-                                                Map<String, String> additionalEnvVars){
+                                                Map<String, String> additionalEnvVars) {
         FargateTaskDefinition taskDefinition = FargateTaskDefinition.Builder
-                .create(this, id+ "Task")
+                .create(this, id + "Task")
                 .cpu(256) // CPU units for the task
                 .memoryLimitMiB(512) // Memory limit in MiB
                 .build();
@@ -152,7 +152,7 @@ public class LocalStack extends Stack {
                                 .streamPrefix(imageName) // Prefix for the log stream
                                 .build()));
 
-        Map<String, String> envVars =new HashMap<>();
+        Map<String, String> envVars = new HashMap<>();
         envVars.put("SPRING_KAFKA_BOOTSTRAP_SERVERS", "localhost.localstack.cloud:4510" +
                 ", localhost.localstack.cloud:4511" +
                 ",localhost.localstack.cloud:4512"); // replace with actual Kafka bootstrap servers
@@ -161,7 +161,7 @@ public class LocalStack extends Stack {
             envVars.putAll(additionalEnvVars);
         }
 
-        if (db != null){
+        if (db != null) {
             envVars.put("STRING_DATASOURCE_URL", "jdbc:postgresql://%s:%s/%s-db".formatted(
                     db.getDbInstanceEndpointAddress(),
                     db.getDbInstanceEndpointPort(),
@@ -176,7 +176,7 @@ public class LocalStack extends Stack {
         }
 
         containerOptions.environment(envVars);
-        taskDefinition.addContainer(imageName+"Container", containerOptions.build());
+        taskDefinition.addContainer(imageName + "Container", containerOptions.build());
         return FargateService.Builder.create(this, id)
                 .cluster(ecsCluster)
                 .taskDefinition(taskDefinition)
@@ -200,11 +200,11 @@ public class LocalStack extends Stack {
      * @param dbName the name of the database
      * @return a configured {@code DatabaseInstance} object representing the created database instance
      */
-    private DatabaseInstance createDatabase(String id, String dbName ){
+    private DatabaseInstance createDatabase(String id, String dbName) {
         return DatabaseInstance.Builder.create(this, id) // this is current stack context, id is unique identifier
                 .engine(DatabaseInstanceEngine.postgres(PostgresInstanceEngineProps.builder()
                         .version(PostgresEngineVersion.VER_17_2)
-                .build())
+                        .build())
                 )
                 .vpc(vpc)
                 .instanceType(InstanceType.of(InstanceClass.BURSTABLE3, InstanceSize.MICRO)) // cpu, store and memory configuration
@@ -216,9 +216,9 @@ public class LocalStack extends Stack {
     }
 
     // create health check for the database
-    private CfnHealthCheck createDbHealthCheck(DatabaseInstance db, String id){
+    private CfnHealthCheck createDbHealthCheck(DatabaseInstance db, String id) {
         return CfnHealthCheck.Builder
-                .create(this,id)
+                .create(this, id)
                 .healthCheckConfig(CfnHealthCheck.HealthCheckConfigProperty.builder()
                         .type("TCP")
                         .port(Token.asNumber(db.getDbInstanceEndpointPort()))
@@ -231,14 +231,14 @@ public class LocalStack extends Stack {
 
     /**
      * Creates and configures an Amazon MSK (Managed Streaming for Apache Kafka) cluster within the stack.
-     *
+     * <p>
      * This method constructs an MSK cluster with the specified cluster name, Kafka version,
      * number of broker nodes, and broker node group configuration. The broker node group
      * includes details such as instance type, client subnets, and availability zone distribution.
      *
      * @return a configured {@code CfnCluster} object representing the created MSK cluster
      */
-    private CfnCluster createMskCluster(){
+    private CfnCluster createMskCluster() {
         return CfnCluster.Builder.create(this, "MskCluster")
                 .clusterName("kafka-cluster")
                 .kafkaVersion("2.8.0")
@@ -246,13 +246,13 @@ public class LocalStack extends Stack {
                 .brokerNodeGroupInfo(CfnCluster.BrokerNodeGroupInfoProperty.builder()
                         .instanceType("kafka.m5.xlarge")
                         .clientSubnets(vpc.getPrivateSubnets().stream().map(
-                                ISubnet::getSubnetId)
+                                        ISubnet::getSubnetId)
                                 .collect(Collectors.toList()))
                         .brokerAzDistribution("DEFAULT").build())
                 .build();
     }
 
-    private void createApiGatewayService(){
+    private void createApiGatewayService() {
         FargateTaskDefinition taskDefinition = FargateTaskDefinition.Builder
                 .create(this, "APIGatewayTaskDefinition")
                 .cpu(256) // CPU units for the task
@@ -291,7 +291,7 @@ public class LocalStack extends Stack {
                         .healthCheckGracePeriod(Duration.seconds(60)) // grace period for health check
                         .build();
     }
-    
+
     /**
      * The main entry point for the application.
      * Initializes the application, defines stack properties, creates the stack,
